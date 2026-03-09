@@ -7,6 +7,7 @@
 C_SRCS += \
 ../Core/Src/Serial.c \
 ../Core/Src/base_serial.c \
+../Core/Src/fsm.c \
 ../Core/Src/main.c \
 ../Core/Src/ringbuffer.c \
 ../Core/Src/roboClaw.c \
@@ -19,6 +20,7 @@ C_SRCS += \
 OBJS += \
 ./Core/Src/Serial.o \
 ./Core/Src/base_serial.o \
+./Core/Src/fsm.o \
 ./Core/Src/main.o \
 ./Core/Src/ringbuffer.o \
 ./Core/Src/roboClaw.o \
@@ -31,6 +33,7 @@ OBJS += \
 C_DEPS += \
 ./Core/Src/Serial.d \
 ./Core/Src/base_serial.d \
+./Core/Src/fsm.d \
 ./Core/Src/main.d \
 ./Core/Src/ringbuffer.d \
 ./Core/Src/roboClaw.d \
@@ -48,7 +51,7 @@ Core/Src/%.o Core/Src/%.su Core/Src/%.cyclo: ../Core/Src/%.c Core/Src/subdir.mk
 clean: clean-Core-2f-Src
 
 clean-Core-2f-Src:
-	-$(RM) ./Core/Src/Serial.cyclo ./Core/Src/Serial.d ./Core/Src/Serial.o ./Core/Src/Serial.su ./Core/Src/base_serial.cyclo ./Core/Src/base_serial.d ./Core/Src/base_serial.o ./Core/Src/base_serial.su ./Core/Src/main.cyclo ./Core/Src/main.d ./Core/Src/main.o ./Core/Src/main.su ./Core/Src/ringbuffer.cyclo ./Core/Src/ringbuffer.d ./Core/Src/ringbuffer.o ./Core/Src/ringbuffer.su ./Core/Src/roboClaw.cyclo ./Core/Src/roboClaw.d ./Core/Src/roboClaw.o ./Core/Src/roboClaw.su ./Core/Src/stm32f7xx_hal_msp.cyclo ./Core/Src/stm32f7xx_hal_msp.d ./Core/Src/stm32f7xx_hal_msp.o ./Core/Src/stm32f7xx_hal_msp.su ./Core/Src/stm32f7xx_it.cyclo ./Core/Src/stm32f7xx_it.d ./Core/Src/stm32f7xx_it.o ./Core/Src/stm32f7xx_it.su ./Core/Src/syscalls.cyclo ./Core/Src/syscalls.d ./Core/Src/syscalls.o ./Core/Src/syscalls.su ./Core/Src/sysmem.cyclo ./Core/Src/sysmem.d ./Core/Src/sysmem.o ./Core/Src/sysmem.su ./Core/Src/system_stm32f7xx.cyclo ./Core/Src/system_stm32f7xx.d ./Core/Src/system_stm32f7xx.o ./Core/Src/system_stm32f7xx.su
+	-$(RM) ./Core/Src/Serial.cyclo ./Core/Src/Serial.d ./Core/Src/Serial.o ./Core/Src/Serial.su ./Core/Src/base_serial.cyclo ./Core/Src/base_serial.d ./Core/Src/base_serial.o ./Core/Src/base_serial.su ./Core/Src/fsm.cyclo ./Core/Src/fsm.d ./Core/Src/fsm.o ./Core/Src/fsm.su ./Core/Src/main.cyclo ./Core/Src/main.d ./Core/Src/main.o ./Core/Src/main.su ./Core/Src/ringbuffer.cyclo ./Core/Src/ringbuffer.d ./Core/Src/ringbuffer.o ./Core/Src/ringbuffer.su ./Core/Src/roboClaw.cyclo ./Core/Src/roboClaw.d ./Core/Src/roboClaw.o ./Core/Src/roboClaw.su ./Core/Src/stm32f7xx_hal_msp.cyclo ./Core/Src/stm32f7xx_hal_msp.d ./Core/Src/stm32f7xx_hal_msp.o ./Core/Src/stm32f7xx_hal_msp.su ./Core/Src/stm32f7xx_it.cyclo ./Core/Src/stm32f7xx_it.d ./Core/Src/stm32f7xx_it.o ./Core/Src/stm32f7xx_it.su ./Core/Src/syscalls.cyclo ./Core/Src/syscalls.d ./Core/Src/syscalls.o ./Core/Src/syscalls.su ./Core/Src/sysmem.cyclo ./Core/Src/sysmem.d ./Core/Src/sysmem.o ./Core/Src/sysmem.su ./Core/Src/system_stm32f7xx.cyclo ./Core/Src/system_stm32f7xx.d ./Core/Src/system_stm32f7xx.o ./Core/Src/system_stm32f7xx.su
 
 .PHONY: clean-Core-2f-Src
 

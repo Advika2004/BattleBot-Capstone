@@ -1,0 +1,7 @@
+../Core/Src/Serial.c:37:23:serial_init	16	static
+../Core/Src/Serial.c:70:6:serial_write	24	static
+../Core/Src/Serial.c:83:9:serial_available	0	static
+../Core/Src/Serial.c:88:9:serial_read	8	static
+../Core/Src/Serial.c:98:6:HAL_UART_TxCpltCallback	16	static
+../Core/Src/Serial.c:109:6:HAL_UART_RxCpltCallback	16	static
+../Core/Src/Serial.c:117:6:HAL_UART_ErrorCallback	0	static

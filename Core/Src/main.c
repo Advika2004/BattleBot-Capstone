@@ -44,20 +44,42 @@
 
 /* Private variables ---------------------------------------------------------*/
 
+UART_HandleTypeDef huart4;
 UART_HandleTypeDef huart5;
-UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart3;
+DMA_HandleTypeDef hdma_uart4_rx;
+DMA_HandleTypeDef hdma_uart5_rx;
+DMA_HandleTypeDef hdma_uart5_tx;
+DMA_HandleTypeDef hdma_usart3_rx;
+DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USER CODE BEGIN PV */
 SERIAL_HandleTypeDef *hserial_uart5;
 SERIAL_HandleTypeDef *hserial_uart3;
-RoboClaw_HandleTypeDef hroboclaw_mc1;
 
-uint8_t debug_buff[50];
+// mc1 = left drive  (0x80)
+// mc2 = right drive (0x81)
+// mc3 = weapon      (0x82)
+RoboClaw_HandleTypeDef hroboclaw_mc1;
+RoboClaw_HandleTypeDef hroboclaw_mc2;
+RoboClaw_HandleTypeDef hroboclaw_mc3;
+
+
+// RoboClaw addresses
+//go into basicmicro and configure these
+//also configure to packet serial
+#define LEFT_RC   0x80
+#define RIGHT_RC  0x81
+#define WEAPON_RC 0x82
+
+// Debug buffer
+uint8_t debug_buff[20000];
+
+//variables to read back
 uint32_t m1_enc_cnt;
 uint32_t m1_speed;
-uint8_t status;
-bool valid;
+uint8_t  rc_status;
+bool     valid;
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE END PV */
@@ -66,16 +88,43 @@ bool valid;
 void SystemClock_Config(void);
 static void MPU_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_UART5_Init(void);
 static void MX_USART3_UART_Init(void);
-static void MX_USART1_UART_Init(void);
+static void MX_UART4_Init(void);
+
 /* USER CODE BEGIN PFP */
-/* Private function prototypes -----------------------------------------------*/
+
+//*************************************NEXT STEPS TO CODE*******************************************************************************
+//1. instead of initalizing every roboclaw, wrap that into an init function so we can call those same lines in main over and over
+//2. instead of having it just run for 3 seconds (HAL_Delay(3000)) interface with keypad
+//3. take given keypad code and initialize the gpio pins for it in the ioc file
+//4. import the pushed2release and release2pushed code files from 316 to detect held button presses
+//5. move all the logic in main to the while loop so it keeps polling the keypad for action
+//6. map the key states to the motor commands within the while loop (look at old keypad code for old while loops)
+//   2 held down = ForwardM1/M2 on left_rc ForwardM1/M2 on right_rc
+//   4 held down = BackwardM1/M2 on left_rc BackwardM1/M2 on right_rc
+//   5 held down = ForwardM1 on weapon_rc
+//   3 held down = left tank turn = BackwardsM1/M2 on left_rc ForwardM1/M2 on right_rc
+//   6 held down = right tank turn = ForwardM1/M2 on right_rc BackwardM1/M2 on left_rc
+//   **upon release of these buttons, send ForwardM1/M2 (0) as speed command**
+//7. make sure key_down -> start motors, key_release -> stop motors
+//8. not implementing simulatneous control (like the weapon and the drive cannot happen at the same time) (too hard for time given)
+// **************************************************************************************************************************************
+
+//************************************* possible errors while debugging today *********************************************************
+//1. when calling ForwardM1 and ForwardM2, if both motors dont spin the same direction, that means one of the motors is wired backwards
+//			- swap the wires going to M1A and M1B and re-test
+//			- make sure that when calling FORWARD, both motors are spinning the same direction.
+//2. make sure all roboclaws share a common ground with the STM (can be differnet ground pins on the STM)
+//3. make sure all roboclaws are set to packet serial mode, 115200 baude rate, with correct addresses in decimal in basicmicro
+//*************************************************************************************************************************************
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#define MAX_SPEED 10   /* 0-127; keep low for a bench test */
 
 /* USER CODE END 0 */
 
@@ -85,131 +134,172 @@ static void MX_USART1_UART_Init(void);
   */
 int main(void)
 {
+    /* USER CODE BEGIN 1 */
+    /* USER CODE END 1 */
 
-  /* USER CODE BEGIN 1 */
+    MPU_Config();
+    HAL_Init();
+    SystemClock_Config();
 
-  /* USER CODE END 1 */
-
-  /* MPU Configuration--------------------------------------------------------*/
-  MPU_Config();
-
-  /* MCU Configuration--------------------------------------------------------*/
-
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
-
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
-  /* Configure the system clock */
-  SystemClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_UART5_Init();
-  MX_USART3_UART_Init();
-  MX_USART1_UART_Init();
-  /* USER CODE BEGIN 2 */
-
-  //initializing the printing
-  hserial_uart3 = serial_init(&huart3);
-  serial_write(hserial_uart3, (uint8_t*)"=== RoboClaw Test Start ===\r\n", 30);
+    MX_GPIO_Init();
+    MX_DMA_Init();
+    MX_UART5_Init();
+    MX_USART3_UART_Init();
+    MX_UART4_Init();
 
 
-  //initialize the uart for the roboclaw
-  hserial_uart5 = serial_init(&huart5);
-  serial_write(hserial_uart3, (uint8_t*)"UART5 initialized\r\n", 19);
+    /* USER CODE BEGIN 2 */
+
+      //initializing the printing
+      hserial_uart3 = serial_init(&huart3);
+      serial_write(hserial_uart3, (uint8_t*)"=== RoboClaw Test Start ===\r\n", strlen("=== RoboClaw Test Start ===\r\n"));
+      HAL_Delay(2000);
+
+      //initialize the uart for the roboclaw
+      hserial_uart5 = serial_init(&huart5);
+      serial_write(hserial_uart3, (uint8_t*)"UART5 initialized\r\n", strlen("UART5 initialized\r\n"));
+      HAL_Delay(2000);
+
+      //init weapon roboclaw
+      hroboclaw_mc3.hserial = hserial_uart5;
+      hroboclaw_mc3.packetserial_address = WEAPON_RC;
+
+      if (roboClaw_init(&hroboclaw_mc3) != ROBOCLAW_OK) {
+    	  HAL_Delay(1000);
+    	  serial_write(hserial_uart3, (uint8_t*)"ERROR: weapon roboClaw init failed!\r\n", strlen("ERROR: weapon roboClaw init failed!\r\n"));
+      }
+
+      serial_write(hserial_uart3, (uint8_t*)"weapon roboClaw init OK!\r\n", strlen("weapon roboClaw init OK!\r\n"));
+
+      //init right side roboclaw
+      hroboclaw_mc2.hserial = hserial_uart5;
+      hroboclaw_mc2.packetserial_address = RIGHT_RC;
+
+      if (roboClaw_init(&hroboclaw_mc2) != ROBOCLAW_OK) {
+    	  HAL_Delay(1000);
+    	  serial_write(hserial_uart3, (uint8_t*)"ERROR: right side roboClaw init failed!\r\n", strlen("ERROR: right side roboClaw init failed!\r\n"));
+      }
+
+      serial_write(hserial_uart3, (uint8_t*)"right side roboClaw init OK!\r\n", strlen("right side roboClaw init OK!\r\n"));
 
 
-  hserial_uart5 = serial_init(&huart5); // init serial communication for roboClaw controller 1
-  /* Init roboClaw */
-  hroboclaw_mc1.hserial = hserial_uart5;
-  hroboclaw_mc1.packetserial_address = 0x80;
+      //init left side roboclaw
+      hroboclaw_mc1.hserial = hserial_uart5;
+      hroboclaw_mc1.packetserial_address = LEFT_RC;
 
-  if (roboClaw_init(&hroboclaw_mc1) != ROBOCLAW_OK) {
-	    serial_write(hserial_uart3, (uint8_t*)"ERROR: RoboClaw init failed!\r\n", 30);
-  }
+      if (roboClaw_init(&hroboclaw_mc1) != ROBOCLAW_OK) {
+    	  HAL_Delay(1000);
+    	  serial_write(hserial_uart3, (uint8_t*)"ERROR: left side roboClaw init failed!\r\n", strlen("ERROR: left side roboClaw init failed!\r\n"));
+      }
 
-  serial_write(hserial_uart3, (uint8_t*)"RoboClaw init OK!\r\n", 19);
-  serial_write(hserial_uart3, (uint8_t*)"\r\n=== Test Complete ===\r\n", 25);
+      serial_write(hserial_uart3, (uint8_t*)"left side roboClaw init OK!\r\n", strlen("left side roboClaw init OK!\r\n"));
+
+      HAL_Delay(1000);
 
 
-	uint8_t sp;
-	//forward accel
-	serial_write(hserial_uart3, (uint8_t*)"Forward accel test...\r\n", 23);
-	for (sp = 0; sp < 125; sp++) {
-		ForwardM1(&hroboclaw_mc1, sp);
-		m1_speed = ReadSpeedM1(&hroboclaw_mc1, &status, &valid);
-		snprintf((char*)debug_buff, 50, "Speed: %lu\r\n", m1_speed);
-		serial_write(hserial_uart3, debug_buff, strlen((char*)debug_buff));
-		HAL_Delay(100);
-	}
+      	//testing on all 3 roboclaws:
 
-	//forward deaccel
-	serial_write(hserial_uart3, (uint8_t*)"\r\nForward decel test...\r\n", 26);
-	for (sp = 125; sp > 0; sp--) {
-		ForwardM1(&hroboclaw_mc1, sp);
-		m1_speed = ReadSpeedM1(&hroboclaw_mc1, &status, &valid);
-		snprintf((char*)debug_buff, 50, "Speed: %lu\r\n", m1_speed);
-		serial_write(hserial_uart3, debug_buff, strlen((char*)debug_buff));
-		HAL_Delay(100);
-	}
+      	//move all 3 motors forward
+      	serial_write(hserial_uart3, (uint8_t*)"TEST: forward\r\n", strlen("TEST: forward\r\n"));
+      	ForwardM1(&hroboclaw_mc1, MAX_SPEED);   // left forward
+    	ForwardM2(&hroboclaw_mc1, MAX_SPEED);
 
-	//stop it
-	ForwardM1(&hroboclaw_mc1, 0);
-	serial_write(hserial_uart3, (uint8_t*)"\r\nMotor stopped\r\n\r\n", 19);
-	HAL_Delay(1000);
 
-	//backward accel
-//	for (sp = 0; sp < 125; sp++) {
-//		BackwardM1(&hroboclaw_mc1, sp);
-//		m1_speed = ReadSpeedM1(&hroboclaw_mc1, &status, &valid);
-//		snprintf(debug_buff, 50, "%d\r\n", m1_speed);
-//		serial_write(hserial_uart3, debug_buff, strlen(debug_buff));
-//		HAL_Delay(100);
-//	}
-//
-//	//backward deaccel
-//	for (sp = 125; sp > 0; sp--) {
-//		BackwardM1(&hroboclaw_mc1, sp);
-//		m1_speed = ReadSpeedM1(&hroboclaw_mc1, &status, &valid);
-//		snprintf(debug_buff, 50, "%d\r\n", m1_speed);
-//		serial_write(hserial_uart3, debug_buff, strlen(debug_buff));
-//		HAL_Delay(100);
-//	}
-//
-//	BackwardM1(&hroboclaw_mc1, 0);
-//
-//	serial_write(hserial_uart3, (uint8_t*) "ok\r\n", strlen("ok\r\n"));
+      	ForwardM1(&hroboclaw_mc2, MAX_SPEED);   // right forward
+      	ForwardM2(&hroboclaw_mc2, MAX_SPEED);
 
-	while (1) {
-		m1_enc_cnt = ReadEncM1(&hroboclaw_mc1, &status, &valid);
-		snprintf((char*)debug_buff, 50, "%lu\r\n", m1_enc_cnt);
-		serial_write(hserial_uart3, debug_buff, strlen((char*)debug_buff));
+      	ForwardM1(&hroboclaw_mc3, MAX_SPEED);   // weapon forward
+      	HAL_Delay(3000);
 
-		//  HAL_Delay(2);
-	}
-	// serial_write(hserial_uart5, test, 5);
-	// serial_write(hserial_uart5, test, 5);
+      	//stop all 3 motors after 3 seconds
+      	ForwardM1(&hroboclaw_mc1, 0);
+      	ForwardM2(&hroboclaw_mc1, 0);
 
-  /* USER CODE END 2 */
+      	ForwardM1(&hroboclaw_mc2, 0);
+      	ForwardM2(&hroboclaw_mc2, 0);
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-//	while (1) {
-//		SpeedM1(&hroboclaw_mc1,-75);
+      	ForwardM1(&hroboclaw_mc3, 0);
+      	serial_write(hserial_uart3, (uint8_t*)"STOPPED: forwards test stopped \r\n", strlen("STOPPED: forwards test stopped \r\n"));
+      	HAL_Delay(500);
+
+      	//move all 3 motors backwards for 3 seconds
+      	serial_write(hserial_uart3, (uint8_t*)"TEST: backward\r\n", strlen("TEST: backward\r\n"));
+      	BackwardM1(&hroboclaw_mc1, MAX_SPEED);
+      	BackwardM2(&hroboclaw_mc1, MAX_SPEED);
+
+      	BackwardM1(&hroboclaw_mc2, MAX_SPEED);
+      	BackwardM2(&hroboclaw_mc2, MAX_SPEED);
+
+      	BackwardM1(&hroboclaw_mc3, MAX_SPEED);
+      	HAL_Delay(3000);
+
+      	//stop after 3 seconds is up
+      	ForwardM1(&hroboclaw_mc1, 0);
+      	ForwardM2(&hroboclaw_mc1, 0);
+
+      	ForwardM1(&hroboclaw_mc2, 0);
+      	ForwardM2(&hroboclaw_mc2, 0);
+
+      	ForwardM1(&hroboclaw_mc3, 0);
+      	serial_write(hserial_uart3, (uint8_t*)"STOPPED: backwards test stopped \r\n", strlen("STOPPED: backwards test stopped \r\n"));
+      	HAL_Delay(500);
+
+
+      	//test turning it left (left = backwards, right = forwards)
+      	serial_write(hserial_uart3, (uint8_t*)"TEST: tank turn left\r\n", strlen("TEST: tank turn left\r\n"));
+      	BackwardM1(&hroboclaw_mc1, MAX_SPEED);
+      	BackwardM2(&hroboclaw_mc1, MAX_SPEED);
+
+      	ForwardM1(&hroboclaw_mc2, MAX_SPEED);
+      	ForwardM2(&hroboclaw_mc2, MAX_SPEED);
+
+      	HAL_Delay(3000);
+
+      	ForwardM1(&hroboclaw_mc1, 0);
+    	ForwardM2(&hroboclaw_mc1, 0);
+
+      	ForwardM1(&hroboclaw_mc2, 0);
+      	ForwardM2(&hroboclaw_mc2, 0);
+
+      	serial_write(hserial_uart3, (uint8_t*)"STOPPED: tank left test stopped \r\n", strlen("STOPPED: tank left test stopped \r\n"));
+      	HAL_Delay(500);
+
+
+      	//test turning it right (left = forward, right = backwards)
+      	serial_write(hserial_uart3, (uint8_t*)"TEST: tank turn right\r\n", strlen("TEST: tank turn right\r\n"));
+      	ForwardM1(&hroboclaw_mc1, MAX_SPEED);
+      	ForwardM2(&hroboclaw_mc1, MAX_SPEED);
+
+      	BackwardM1(&hroboclaw_mc2, MAX_SPEED);
+      	BackwardM2(&hroboclaw_mc2, MAX_SPEED);
+
+      	HAL_Delay(3000);
+
+      	ForwardM1(&hroboclaw_mc1, 0);
+      	ForwardM2(&hroboclaw_mc1, 0);
+
+      	ForwardM1(&hroboclaw_mc2, 0);
+      	ForwardM2(&hroboclaw_mc2, 0);
+
+      	serial_write(hserial_uart3, (uint8_t*)"STOPPED: tank right test stopped \r\n", strlen("STOPPED: tank right test stopped \r\n"));
+      	HAL_Delay(500);
+
+      	serial_write(hserial_uart3, (uint8_t*)"ALL TESTS COMPLETE\r\n", strlen("ALL TESTS COMPLETE\r\n"));
+    /* USER CODE END 2 */
+
+    /* Infinite loop */
+    /* USER CODE BEGIN WHILE */
+    while (1)
+    {
+        // Nothing to do — test already ran once above.
+        // Add HAL_Delay or blink LED here if you want a heartbeat.
+    }
     /* USER CODE END WHILE */
-
     /* USER CODE BEGIN 3 */
-//
-//	}
-  /* USER CODE END 3 */
+    /* USER CODE END 3 */
 }
+
+
 
 /**
   * @brief System Clock Configuration
@@ -223,7 +313,7 @@ void SystemClock_Config(void)
   /** Configure the main internal regulator output voltage
   */
   __HAL_RCC_PWR_CLK_ENABLE();
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -231,8 +321,20 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLM = 8;
+  RCC_OscInitStruct.PLL.PLLN = 216;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = 2;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Activate the Over-Drive mode
+  */
+  if (HAL_PWREx_EnableOverDrive() != HAL_OK)
   {
     Error_Handler();
   }
@@ -241,15 +343,50 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_7) != HAL_OK)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief UART4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_UART4_Init(void)
+{
+
+  /* USER CODE BEGIN UART4_Init 0 */
+
+  /* USER CODE END UART4_Init 0 */
+
+  /* USER CODE BEGIN UART4_Init 1 */
+
+  /* USER CODE END UART4_Init 1 */
+  huart4.Instance = UART4;
+  huart4.Init.BaudRate = 115200;
+  huart4.Init.WordLength = UART_WORDLENGTH_8B;
+  huart4.Init.StopBits = UART_STOPBITS_1;
+  huart4.Init.Parity = UART_PARITY_NONE;
+  huart4.Init.Mode = UART_MODE_TX_RX;
+  huart4.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart4.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart4.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart4.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN UART4_Init 2 */
+
+  /* USER CODE END UART4_Init 2 */
+
 }
 
 /**
@@ -287,40 +424,6 @@ static void MX_UART5_Init(void)
 
 }
 
-/**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
-
-}
 
 /**
   * @brief USART3 Initialization Function
@@ -358,6 +461,34 @@ static void MX_USART3_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream0_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
+  /* DMA1_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
+  /* DMA1_Stream2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream2_IRQn);
+  /* DMA1_Stream4_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
+  /* DMA1_Stream7_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream7_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream7_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -371,9 +502,8 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
@@ -430,9 +560,11 @@ void MPU_Config(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-	/* User can add his own implementation to report the HAL error return state */
-	while (1) {
-	}
+  /* User can add his own implementation to report the HAL error return state */
+  __disable_irq();
+  while (1)
+  {
+  }
   /* USER CODE END Error_Handler_Debug */
 }
 

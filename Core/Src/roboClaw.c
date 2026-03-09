@@ -8,7 +8,7 @@
 
 #include "roboClaw.h"
 
-#define MAXTOUT 5
+#define MAXTOUT 10
 #define MAXRETRY 2
 #define SEND_BYTE_LEN 1
 #define SetDWORDval(arg) (uint8_t)(((uint32_t)arg)>>24),(uint8_t)(((uint32_t)arg)>>16),(uint8_t)(((uint32_t)arg)>>8),(uint8_t)arg

@@ -5,6 +5,8 @@
  *      Author: sadeesh
  */
 
+#include "string.h"
+#include "stdio.h"
 #include "Serial.h"
 
 #ifdef USE_USART5
@@ -117,4 +119,3 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
 
 	}
 }
-

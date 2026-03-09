@@ -124,6 +124,11 @@ typedef struct {
 
 
 extern RoboClaw_HandleTypeDef hroboclaw_mc1;
+extern RoboClaw_HandleTypeDef hroboclaw_mc2;
+extern RoboClaw_HandleTypeDef hroboclaw_mc3;
+
+
+
 //RoboClaw_StatusTypeDef roboClaw_init(RoboClaw_HandleTypeDef* hroboClaw);
 //RoboClaw_StatusTypeDef ForwardM1(RoboClaw_HandleTypeDef* hroboClaw, uint8_t speed);
 //RoboClaw_StatusTypeDef BackwardM1(RoboClaw_HandleTypeDef* hroboClaw, uint8_t speed);
