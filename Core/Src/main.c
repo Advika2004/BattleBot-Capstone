@@ -92,8 +92,11 @@ static void MX_DMA_Init(void);
 static void MX_UART5_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_UART4_Init(void);
-
 /* USER CODE BEGIN PFP */
+// 1. Wrap initialization into an init function
+void RoboClaw_Init_All(void);
+void Stop_All_Motors(void);
+char Keypad_Scan(void);
 
 //*************************************NEXT STEPS TO CODE*******************************************************************************
 //1. instead of initalizing every roboclaw, wrap that into an init function so we can call those same lines in main over and over
@@ -124,7 +127,7 @@ static void MX_UART4_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-#define MAX_SPEED 10   /* 0-127; keep low for a bench test */
+#define MAX_SPEED 15  /* 0-127; keep low for a bench test */
 
 /* USER CODE END 0 */
 
@@ -134,172 +137,114 @@ static void MX_UART4_Init(void);
   */
 int main(void)
 {
-    /* USER CODE BEGIN 1 */
-    /* USER CODE END 1 */
 
-    MPU_Config();
-    HAL_Init();
-    SystemClock_Config();
+  /* USER CODE BEGIN 1 */
+  /* USER CODE END 1 */
 
-    MX_GPIO_Init();
-    MX_DMA_Init();
-    MX_UART5_Init();
-    MX_USART3_UART_Init();
-    MX_UART4_Init();
+  /* MPU Configuration--------------------------------------------------------*/
+  MPU_Config();
 
+  /* MCU Configuration--------------------------------------------------------*/
 
-    /* USER CODE BEGIN 2 */
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
 
-      //initializing the printing
-      hserial_uart3 = serial_init(&huart3);
-      serial_write(hserial_uart3, (uint8_t*)"=== RoboClaw Test Start ===\r\n", strlen("=== RoboClaw Test Start ===\r\n"));
-      HAL_Delay(2000);
+  /* USER CODE BEGIN Init */
 
-      //initialize the uart for the roboclaw
-      hserial_uart5 = serial_init(&huart5);
-      serial_write(hserial_uart3, (uint8_t*)"UART5 initialized\r\n", strlen("UART5 initialized\r\n"));
-      HAL_Delay(2000);
+  /* USER CODE END Init */
 
-      //init weapon roboclaw
-      hroboclaw_mc3.hserial = hserial_uart5;
-      hroboclaw_mc3.packetserial_address = WEAPON_RC;
+  /* Configure the system clock */
+  SystemClock_Config();
 
-      if (roboClaw_init(&hroboclaw_mc3) != ROBOCLAW_OK) {
-    	  HAL_Delay(1000);
-    	  serial_write(hserial_uart3, (uint8_t*)"ERROR: weapon roboClaw init failed!\r\n", strlen("ERROR: weapon roboClaw init failed!\r\n"));
-      }
+  /* USER CODE BEGIN SysInit */
 
-      serial_write(hserial_uart3, (uint8_t*)"weapon roboClaw init OK!\r\n", strlen("weapon roboClaw init OK!\r\n"));
+  /* USER CODE END SysInit */
 
-      //init right side roboclaw
-      hroboclaw_mc2.hserial = hserial_uart5;
-      hroboclaw_mc2.packetserial_address = RIGHT_RC;
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_DMA_Init();
+  MX_UART5_Init();
+  MX_USART3_UART_Init();
+  MX_UART4_Init();
+  /* USER CODE BEGIN 2 */
+    //initializing the printing
+          hserial_uart3 = serial_init(&huart3);
+          serial_write(hserial_uart3, (uint8_t*)"=== RoboClaw Control Start ===\r\n", 32);
 
-      if (roboClaw_init(&hroboclaw_mc2) != ROBOCLAW_OK) {
-    	  HAL_Delay(1000);
-    	  serial_write(hserial_uart3, (uint8_t*)"ERROR: right side roboClaw init failed!\r\n", strlen("ERROR: right side roboClaw init failed!\r\n"));
-      }
+          //initialize the uart for the roboclaw
+          hserial_uart5 = serial_init(&huart5);
 
-      serial_write(hserial_uart3, (uint8_t*)"right side roboClaw init OK!\r\n", strlen("right side roboClaw init OK!\r\n"));
+          // 1. Initializing roboclaws via wrapper function
+          RoboClaw_Init_All();
 
+          serial_write(hserial_uart3, (uint8_t*)"System Ready. Use Keypad to drive.\r\n", 36);
 
-      //init left side roboclaw
-      hroboclaw_mc1.hserial = hserial_uart5;
-      hroboclaw_mc1.packetserial_address = LEFT_RC;
+          // Variables for debouncing/state tracking
+          char last_stable_key = 0;
+          char current_detection = 0;
+          int confidence = 0;
+          const int THRESHOLD = 3; // Confidence threshold
+  /* USER CODE END 2 */
 
-      if (roboClaw_init(&hroboclaw_mc1) != ROBOCLAW_OK) {
-    	  HAL_Delay(1000);
-    	  serial_write(hserial_uart3, (uint8_t*)"ERROR: left side roboClaw init failed!\r\n", strlen("ERROR: left side roboClaw init failed!\r\n"));
-      }
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+            while (1)
+            {
+                // 5. Poll the keypad for action
+                char raw_reading = Keypad_Scan();
 
-      serial_write(hserial_uart3, (uint8_t*)"left side roboClaw init OK!\r\n", strlen("left side roboClaw init OK!\r\n"));
+                // 4. detect held button presses via confidence debouncing
+                if (raw_reading == current_detection && raw_reading != 0) {
+                    confidence++;
+                } else {
+                    confidence = 0;
+                    current_detection = raw_reading;
+                }
 
-      HAL_Delay(1000);
+                // Update state if we hit threshold; if raw is 0, reset immediately to stop
+                if (confidence >= THRESHOLD) {
+                    last_stable_key = current_detection;
+                } else if (raw_reading == 0) {
+                    last_stable_key = 0;
+                }
 
+                // 6. map the key states to the motor commands within the while loop
+                if (last_stable_key == '2') {
+                    // 2 = FORWARD
+                    ForwardM1(&hroboclaw_mc1, MAX_SPEED); ForwardM2(&hroboclaw_mc1, MAX_SPEED);
+                    ForwardM1(&hroboclaw_mc2, MAX_SPEED); ForwardM2(&hroboclaw_mc2, MAX_SPEED);
+                }
+                else if (last_stable_key == '8') {
+                    // 8 = BACKWARD
+                    BackwardM1(&hroboclaw_mc1, MAX_SPEED); BackwardM2(&hroboclaw_mc1, MAX_SPEED);
+                    BackwardM1(&hroboclaw_mc2, MAX_SPEED); BackwardM2(&hroboclaw_mc2, MAX_SPEED);
+                }
+                else if (last_stable_key == '4') {
+                    // 4 = TANK LEFT (Left side back, Right side forward)
+                    BackwardM1(&hroboclaw_mc1, MAX_SPEED); BackwardM2(&hroboclaw_mc1, MAX_SPEED);
+                    ForwardM1(&hroboclaw_mc2, MAX_SPEED);  ForwardM2(&hroboclaw_mc2, MAX_SPEED);
+                }
+                else if (last_stable_key == '6') {
+                    // 6 = TANK RIGHT (Left side forward, Right side back)
+                    ForwardM1(&hroboclaw_mc1, MAX_SPEED);  ForwardM2(&hroboclaw_mc1, MAX_SPEED);
+                    BackwardM1(&hroboclaw_mc2, MAX_SPEED); BackwardM2(&hroboclaw_mc2, MAX_SPEED);
+                }
+                else if (last_stable_key == '5') {
+                    // 5 = WEAPON
+                    ForwardM1(&hroboclaw_mc3, MAX_SPEED);
+                }
+                else {
+                    // No key or released = STOP
+                    Stop_All_Motors();
+                }
 
-      	//testing on all 3 roboclaws:
-
-      	//move all 3 motors forward
-      	serial_write(hserial_uart3, (uint8_t*)"TEST: forward\r\n", strlen("TEST: forward\r\n"));
-      	ForwardM1(&hroboclaw_mc1, MAX_SPEED);   // left forward
-    	ForwardM2(&hroboclaw_mc1, MAX_SPEED);
-
-
-      	ForwardM1(&hroboclaw_mc2, MAX_SPEED);   // right forward
-      	ForwardM2(&hroboclaw_mc2, MAX_SPEED);
-
-      	ForwardM1(&hroboclaw_mc3, MAX_SPEED);   // weapon forward
-      	HAL_Delay(3000);
-
-      	//stop all 3 motors after 3 seconds
-      	ForwardM1(&hroboclaw_mc1, 0);
-      	ForwardM2(&hroboclaw_mc1, 0);
-
-      	ForwardM1(&hroboclaw_mc2, 0);
-      	ForwardM2(&hroboclaw_mc2, 0);
-
-      	ForwardM1(&hroboclaw_mc3, 0);
-      	serial_write(hserial_uart3, (uint8_t*)"STOPPED: forwards test stopped \r\n", strlen("STOPPED: forwards test stopped \r\n"));
-      	HAL_Delay(500);
-
-      	//move all 3 motors backwards for 3 seconds
-      	serial_write(hserial_uart3, (uint8_t*)"TEST: backward\r\n", strlen("TEST: backward\r\n"));
-      	BackwardM1(&hroboclaw_mc1, MAX_SPEED);
-      	BackwardM2(&hroboclaw_mc1, MAX_SPEED);
-
-      	BackwardM1(&hroboclaw_mc2, MAX_SPEED);
-      	BackwardM2(&hroboclaw_mc2, MAX_SPEED);
-
-      	BackwardM1(&hroboclaw_mc3, MAX_SPEED);
-      	HAL_Delay(3000);
-
-      	//stop after 3 seconds is up
-      	ForwardM1(&hroboclaw_mc1, 0);
-      	ForwardM2(&hroboclaw_mc1, 0);
-
-      	ForwardM1(&hroboclaw_mc2, 0);
-      	ForwardM2(&hroboclaw_mc2, 0);
-
-      	ForwardM1(&hroboclaw_mc3, 0);
-      	serial_write(hserial_uart3, (uint8_t*)"STOPPED: backwards test stopped \r\n", strlen("STOPPED: backwards test stopped \r\n"));
-      	HAL_Delay(500);
-
-
-      	//test turning it left (left = backwards, right = forwards)
-      	serial_write(hserial_uart3, (uint8_t*)"TEST: tank turn left\r\n", strlen("TEST: tank turn left\r\n"));
-      	BackwardM1(&hroboclaw_mc1, MAX_SPEED);
-      	BackwardM2(&hroboclaw_mc1, MAX_SPEED);
-
-      	ForwardM1(&hroboclaw_mc2, MAX_SPEED);
-      	ForwardM2(&hroboclaw_mc2, MAX_SPEED);
-
-      	HAL_Delay(3000);
-
-      	ForwardM1(&hroboclaw_mc1, 0);
-    	ForwardM2(&hroboclaw_mc1, 0);
-
-      	ForwardM1(&hroboclaw_mc2, 0);
-      	ForwardM2(&hroboclaw_mc2, 0);
-
-      	serial_write(hserial_uart3, (uint8_t*)"STOPPED: tank left test stopped \r\n", strlen("STOPPED: tank left test stopped \r\n"));
-      	HAL_Delay(500);
-
-
-      	//test turning it right (left = forward, right = backwards)
-      	serial_write(hserial_uart3, (uint8_t*)"TEST: tank turn right\r\n", strlen("TEST: tank turn right\r\n"));
-      	ForwardM1(&hroboclaw_mc1, MAX_SPEED);
-      	ForwardM2(&hroboclaw_mc1, MAX_SPEED);
-
-      	BackwardM1(&hroboclaw_mc2, MAX_SPEED);
-      	BackwardM2(&hroboclaw_mc2, MAX_SPEED);
-
-      	HAL_Delay(3000);
-
-      	ForwardM1(&hroboclaw_mc1, 0);
-      	ForwardM2(&hroboclaw_mc1, 0);
-
-      	ForwardM1(&hroboclaw_mc2, 0);
-      	ForwardM2(&hroboclaw_mc2, 0);
-
-      	serial_write(hserial_uart3, (uint8_t*)"STOPPED: tank right test stopped \r\n", strlen("STOPPED: tank right test stopped \r\n"));
-      	HAL_Delay(500);
-
-      	serial_write(hserial_uart3, (uint8_t*)"ALL TESTS COMPLETE\r\n", strlen("ALL TESTS COMPLETE\r\n"));
-    /* USER CODE END 2 */
-
-    /* Infinite loop */
-    /* USER CODE BEGIN WHILE */
-    while (1)
-    {
-        // Nothing to do — test already ran once above.
-        // Add HAL_Delay or blink LED here if you want a heartbeat.
-    }
+                HAL_Delay(10); // Polling stability
+            }
     /* USER CODE END WHILE */
+
     /* USER CODE BEGIN 3 */
-    /* USER CODE END 3 */
+  /* USER CODE END 3 */
 }
-
-
 
 /**
   * @brief System Clock Configuration
@@ -424,7 +369,6 @@ static void MX_UART5_Init(void)
 
 }
 
-
 /**
   * @brief USART3 Initialization Function
   * @param None
@@ -501,12 +445,22 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : PE2 PE4 PE5 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_4|GPIO_PIN_5;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PA5 */
   GPIO_InitStruct.Pin = GPIO_PIN_5;
@@ -515,13 +469,60 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : PD3 PD4 PD5 */
+  GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+/**
+ * @brief  Scans 3x4 Keypad on PD3-6 (Rows) and PE2,4,5 (Cols)
+ */
+char Keypad_Scan(void) {
+    uint16_t RowPins[] = {GPIO_PIN_3, GPIO_PIN_4, GPIO_PIN_5, GPIO_PIN_6};
+    uint16_t ColPins[] = {GPIO_PIN_2, GPIO_PIN_4, GPIO_PIN_5};
+    char map[4][3] = {{'1','2','3'},{'4','5','6'},{'7','8','9'},{'*','0','#'}};
 
+    for (int r = 0; r < 4; r++) {
+        HAL_GPIO_WritePin(GPIOD, GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(GPIOD, RowPins[r], GPIO_PIN_SET);
+        HAL_Delay(1);
+
+        for (int c = 0; c < 3; c++) {
+            if (HAL_GPIO_ReadPin(GPIOE, ColPins[c]) == GPIO_PIN_SET) return map[r][c];
+        }
+    }
+    return 0;
+}
+
+/**
+ * @brief  Initializes all three RoboClaws
+ */
+void RoboClaw_Init_All(void) {
+    hroboclaw_mc1.hserial = hserial_uart5; hroboclaw_mc1.packetserial_address = LEFT_RC;
+    hroboclaw_mc2.hserial = hserial_uart5; hroboclaw_mc2.packetserial_address = RIGHT_RC;
+    hroboclaw_mc3.hserial = hserial_uart5; hroboclaw_mc3.packetserial_address = WEAPON_RC;
+
+    roboClaw_init(&hroboclaw_mc1);
+    roboClaw_init(&hroboclaw_mc2);
+    roboClaw_init(&hroboclaw_mc3);
+}
+
+/**
+ * @brief  Sends Stop command to all motors
+ */
+void Stop_All_Motors(void) {
+    ForwardM1(&hroboclaw_mc1, 0); ForwardM2(&hroboclaw_mc1, 0);
+    ForwardM1(&hroboclaw_mc2, 0); ForwardM2(&hroboclaw_mc2, 0);
+    ForwardM1(&hroboclaw_mc3, 0);
+}
 /* USER CODE END 4 */
 
  /* MPU Configuration */
