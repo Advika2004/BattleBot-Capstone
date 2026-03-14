@@ -70,7 +70,7 @@ RoboClaw_HandleTypeDef hroboclaw_mc3;
 //also configure to packet serial
 #define LEFT_RC   0x80
 #define RIGHT_RC  0x81
-#define WEAPON_RC 0x82
+#define WEAPON_RC 0x84
 
 // Debug buffer
 uint8_t debug_buff[20000];
@@ -127,7 +127,8 @@ char Keypad_Scan(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-#define MAX_SPEED 15  /* 0-127; keep low for a bench test */
+#define MAX_SPEED 15 /* 0-127; keep low for a bench test */
+#define WEAPON_SPEED 8
 
 /* USER CODE END 0 */
 
@@ -210,10 +211,11 @@ int main(void)
 
                 // 6. map the key states to the motor commands within the while loop
                 if (last_stable_key == '2') {
-                    // 2 = FORWARD
-                    ForwardM1(&hroboclaw_mc1, MAX_SPEED); ForwardM2(&hroboclaw_mc1, MAX_SPEED);
-                    ForwardM1(&hroboclaw_mc2, MAX_SPEED); ForwardM2(&hroboclaw_mc2, MAX_SPEED);
+
+                	ForwardM1(&hroboclaw_mc1, MAX_SPEED); ForwardM2(&hroboclaw_mc1, MAX_SPEED);
+                	ForwardM1(&hroboclaw_mc2, MAX_SPEED); ForwardM2(&hroboclaw_mc2, MAX_SPEED);
                 }
+
                 else if (last_stable_key == '8') {
                     // 8 = BACKWARD
                     BackwardM1(&hroboclaw_mc1, MAX_SPEED); BackwardM2(&hroboclaw_mc1, MAX_SPEED);
@@ -231,12 +233,12 @@ int main(void)
                 }
                 else if (last_stable_key == '5') {
                     // 5 = WEAPON
-                    ForwardM1(&hroboclaw_mc3, MAX_SPEED);
+                    ForwardM2(&hroboclaw_mc3, WEAPON_SPEED);
                 }
                 else {
                     // No key or released = STOP
                     Stop_All_Motors();
-                }
+                 }
 
                 HAL_Delay(10); // Polling stability
             }
@@ -510,9 +512,18 @@ void RoboClaw_Init_All(void) {
     hroboclaw_mc2.hserial = hserial_uart5; hroboclaw_mc2.packetserial_address = RIGHT_RC;
     hroboclaw_mc3.hserial = hserial_uart5; hroboclaw_mc3.packetserial_address = WEAPON_RC;
 
-    roboClaw_init(&hroboclaw_mc1);
-    roboClaw_init(&hroboclaw_mc2);
-    roboClaw_init(&hroboclaw_mc3);
+    if (roboClaw_init(&hroboclaw_mc1) != ROBOCLAW_OK) {
+        	  HAL_Delay(1000);
+        	  serial_write(hserial_uart3, (uint8_t*)"ERROR: left side roboClaw init failed!\r\n", strlen("ERROR: left side roboClaw init failed!\r\n"));
+          }
+    if (roboClaw_init(&hroboclaw_mc2) != ROBOCLAW_OK) {
+        	  HAL_Delay(1000);
+        	  serial_write(hserial_uart3, (uint8_t*)"ERROR: right side roboClaw init failed!\r\n", strlen("ERROR: right side roboClaw init failed!\r\n"));
+          }
+    if (roboClaw_init(&hroboclaw_mc3) != ROBOCLAW_OK) {
+        	  HAL_Delay(1000);
+        	  serial_write(hserial_uart3, (uint8_t*)"ERROR: weapon roboClaw init failed!\r\n", strlen("ERROR: weapon roboClaw init failed!\r\n"));
+          }
 }
 
 /**
@@ -521,7 +532,7 @@ void RoboClaw_Init_All(void) {
 void Stop_All_Motors(void) {
     ForwardM1(&hroboclaw_mc1, 0); ForwardM2(&hroboclaw_mc1, 0);
     ForwardM1(&hroboclaw_mc2, 0); ForwardM2(&hroboclaw_mc2, 0);
-    ForwardM1(&hroboclaw_mc3, 0);
+    ForwardM2(&hroboclaw_mc3, 0);
 }
 /* USER CODE END 4 */
 
